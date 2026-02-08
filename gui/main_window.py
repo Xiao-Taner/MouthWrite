@@ -7,6 +7,7 @@
   · 窗口高度通过 fontMetrics 精确计算，紧贴内容
 """
 
+import ctypes
 import html as _html_mod
 
 from PySide6.QtWidgets import (
@@ -189,6 +190,7 @@ class FloatingWindow(QWidget):
             Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
@@ -383,8 +385,27 @@ class FloatingWindow(QWidget):
     # ═══════════════════════════════════════════════════════
     def show_at_bottom_center(self):
         self.show()
+        self._apply_no_activate()
         self.raise_()
         self._reposition()
+
+    def _apply_no_activate(self):
+        """通过 Windows API 设置 WS_EX_NOACTIVATE，彻底防止窗口抢夺焦点。
+
+        Qt 的 WindowDoesNotAcceptFocus 在某些情况下（resize/move）可能不够可靠，
+        直接设置原生扩展样式是最保险的方式。
+        """
+        try:
+            hwnd = int(self.winId())
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            if not (style & WS_EX_NOACTIVATE):
+                ctypes.windll.user32.SetWindowLongW(
+                    hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE
+                )
+        except Exception:
+            pass
 
     def _defer_reflow(self):
         # 内容正在变化，乐观地启用自动滚动；_reposition 会根据实际高度修正
@@ -461,8 +482,8 @@ class FloatingWindow(QWidget):
     # ═══════════════════════════════════════════════════════
     #  事件
     # ═══════════════════════════════════════════════════════
-    def keyPressEvent(self, event):
-        self.close()
+    # 注：keyPressEvent 已移除。窗口设置了 WindowDoesNotAcceptFocus，
+    # 不会接收键盘事件。键盘关闭由 pynput 全局监听（HotkeyListener.dismiss）处理。
 
     def closeEvent(self, event):
         self.window_closed.emit()

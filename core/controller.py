@@ -7,12 +7,16 @@
 窗口关闭方式：点击窗口外部 / 按任意键 / 再次按热键开始新一轮
 """
 
+import ctypes
+
 from pynput.keyboard import Key as PynputKey, Controller as KbController
 from pynput import mouse as pynput_mouse
 
 from PySide6.QtCore import QObject, Signal, Slot, QTimer, QPoint, QRect, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+
+_user32 = ctypes.windll.user32
 
 from utils import resource_path
 
@@ -62,6 +66,7 @@ class Controller(QObject):
 
         # 状态
         self._busy = False
+        self._prev_hwnd = None  # 按热键前的前台窗口句柄
 
         # 历史记录
         self._history = HistoryManager()
@@ -191,6 +196,9 @@ class Controller(QObject):
         self._stop_dismiss_mode()
         self._cleanup_workers()
 
+        # 记住当前前台窗口，粘贴时恢复焦点
+        self._prev_hwnd = _user32.GetForegroundWindow()
+
         # 重置
         self._asr_buffer = ""
         self._raw_asr_text = ""
@@ -215,6 +223,9 @@ class Controller(QObject):
     def _on_key_released(self):
         if not self._busy:
             return
+
+        # RAlt/Alt 会触发菜单焦点，导致输入框光标消失，主动发送 Esc 恢复
+        self._neutralize_alt_release()
 
         self._audio.stop()
 
@@ -400,18 +411,54 @@ class Controller(QObject):
             clipboard.setText(text)
 
     def _auto_paste(self):
-        """模拟 Ctrl+V 粘贴到当前焦点输入框，完成后启用 dismiss 模式。"""
-        if not self._window.isActiveWindow():
-            try:
-                kb = KbController()
-                kb.press(PynputKey.ctrl_l)
-                kb.press('v')
-                kb.release('v')
-                kb.release(PynputKey.ctrl_l)
-            except Exception:
-                pass
+        """恢复焦点到之前的窗口，模拟 Ctrl+V 粘贴，完成后启用 dismiss 模式。"""
+        self._restore_prev_focus()
+        # 短暂等待 Windows 完成焦点切换，再执行粘贴
+        QTimer.singleShot(100, self._do_paste)
+
+    def _restore_prev_focus(self):
+        """通过 Windows API 将焦点还给按热键前的前台窗口。"""
+        hwnd = self._prev_hwnd
+        if not hwnd or not _user32.IsWindow(hwnd):
+            return
+        try:
+            # 先用 keybd_event 满足 Windows 对 SetForegroundWindow 的调用条件
+            # （调用进程必须拥有最近的输入事件）
+            _user32.keybd_event(0, 0, 0x0002, 0)  # KEYEVENTF_KEYUP
+            _user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        # 取消 Alt 触发的菜单模式，恢复文本输入光标
+        self._send_escape()
+
+    def _do_paste(self):
+        """执行 Ctrl+V 粘贴并启用 dismiss 模式。"""
+        try:
+            kb = KbController()
+            kb.press(PynputKey.ctrl_l)
+            kb.press('v')
+            kb.release('v')
+            kb.release(PynputKey.ctrl_l)
+        except Exception:
+            pass
         # 等待模拟按键事件传播完毕后，再启用 dismiss（避免被自己的按键触发）
         QTimer.singleShot(300, self._start_dismiss_mode)
+
+    def _neutralize_alt_release(self):
+        """如果热键是 Alt 类，释放后主动发送 Esc 以恢复输入焦点。"""
+        hotkey = self._config.get("hotkey", "alt_r")
+        if not hotkey.startswith("alt"):
+            return
+        # 等待系统完成 Alt 菜单激活，再发 Esc 取消
+        QTimer.singleShot(30, self._send_escape)
+
+    def _send_escape(self):
+        try:
+            kb = KbController()
+            kb.press(PynputKey.esc)
+            kb.release(PynputKey.esc)
+        except Exception:
+            pass
 
     def _reset_and_close(self):
         self._busy = False
