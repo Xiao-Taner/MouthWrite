@@ -87,7 +87,7 @@ MouthWrite/
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/你的用户名/MouthWrite.git
+git clone https://github.com/Xiao-Taner/MouthWrite.git
 cd MouthWrite
 
 # 2. 创建虚拟环境并安装依赖（使用 uv）
