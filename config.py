@@ -26,6 +26,9 @@ DEFAULT_CONFIG = {
     "optimize": {
         "rules": "",
     },
+    "startup": {
+        "enabled": False,
+    },
 }
 
 

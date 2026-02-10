@@ -1,5 +1,9 @@
 """设置对话框 —— 通用 / 语音识别 / 大模型 / 翻译 / 历史记录 五个 Tab。"""
 
+import sys
+import winreg
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -8,6 +12,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QTextEdit,
+    QCheckBox,
     QComboBox,
     QPushButton,
     QTabWidget,
@@ -128,6 +133,9 @@ QPushButton {
 QPushButton:hover { background-color: #585b70; }
 """
 
+_STARTUP_RUN_KEY = r"Software\\Microsoft\\Windows\\CurrentVersion\\Run"
+_STARTUP_APP_NAME = "MouthWrite"
+
 
 class SettingsDialog(QDialog):
     """可配置项设置对话框。"""
@@ -161,6 +169,9 @@ class SettingsDialog(QDialog):
             "f7", "f8", "f9", "f10", "f11", "f12",
         ])
         form_general.addRow("触发快捷键:", self._hotkey_combo)
+
+        self._startup_chk = QCheckBox("开机自启")
+        form_general.addRow("启动选项:", self._startup_chk)
         tabs.addTab(tab_general, "通用")
 
         # ────────── 语音识别 ──────────
@@ -323,6 +334,7 @@ class SettingsDialog(QDialog):
     def _load_from_config(self):
         c = self._config
         self._hotkey_combo.setCurrentText(c.get("hotkey", "alt_r"))
+        self._startup_chk.setChecked(bool(c.get("startup.enabled", False)))
         self._asr_url.setText(c.get("asr.base_url", ""))
         self._asr_model.setText(c.get("asr.model", ""))
         self._asr_key.setText(c.get("asr.api_key", ""))
@@ -339,6 +351,8 @@ class SettingsDialog(QDialog):
     def _on_save(self):
         c = self._config
         c.set("hotkey", self._hotkey_combo.currentText())
+        c.set("startup.enabled", self._startup_chk.isChecked())
+        self._apply_startup_setting(self._startup_chk.isChecked())
         c.set("asr.base_url", self._asr_url.text().strip())
         c.set("asr.model", self._asr_model.text().strip())
         c.set("asr.api_key", self._asr_key.text().strip())
@@ -449,3 +463,37 @@ class SettingsDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self._history.clear()
             self._populate_history()
+
+    # ── 开机自启 ─────────────────────────────────────────────────────
+    def _startup_command(self) -> str:
+        """生成写入注册表的启动命令。"""
+        if getattr(sys, "frozen", False):
+            return f"\"{sys.executable}\""
+        project_root = Path(__file__).resolve().parents[1]
+        main_py = project_root / "main.py"
+        return f"\"{sys.executable}\" \"{main_py}\""
+
+    def _apply_startup_setting(self, enabled: bool):
+        """写入/移除开机自启注册表项。"""
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                _STARTUP_RUN_KEY,
+                0,
+                winreg.KEY_SET_VALUE,
+            ) as key:
+                if enabled:
+                    winreg.SetValueEx(
+                        key, _STARTUP_APP_NAME, 0, winreg.REG_SZ, self._startup_command()
+                    )
+                else:
+                    try:
+                        winreg.DeleteValue(key, _STARTUP_APP_NAME)
+                    except FileNotFoundError:
+                        pass
+        except OSError:
+            QMessageBox.warning(
+                self,
+                "开机自启",
+                "写入开机自启设置失败，请以管理员权限运行或稍后重试。",
+            )
