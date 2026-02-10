@@ -7,6 +7,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QLabel,
     QLineEdit,
+    QTextEdit,
     QComboBox,
     QPushButton,
     QTabWidget,
@@ -33,7 +34,7 @@ QLabel {
     color: #bac2de;
     font-size: 13px;
 }
-QLineEdit, QSpinBox {
+QLineEdit, QSpinBox, QTextEdit {
     background-color: #313244;
     color: #cdd6f4;
     border: 1px solid #45475a;
@@ -42,7 +43,7 @@ QLineEdit, QSpinBox {
     font-size: 13px;
     selection-background-color: #89b4fa;
 }
-QLineEdit:focus, QSpinBox:focus {
+QLineEdit:focus, QSpinBox:focus, QTextEdit:focus {
     border-color: #89b4fa;
 }
 QComboBox {
@@ -213,6 +214,32 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(tab_llm, "大模型")
 
+        # ────────── 提示词 ──────────
+        tab_prompt = QWidget()
+        prompt_lay = QVBoxLayout(tab_prompt)
+        prompt_lay.setContentsMargins(16, 20, 16, 16)
+        prompt_lay.setSpacing(10)
+
+        prompt_label = QLabel("语音转录文本优化提示词：")
+        prompt_label.setStyleSheet("color: #bac2de; font-size: 13px;")
+        prompt_lay.addWidget(prompt_label)
+
+        self._optimize_rules = QTextEdit()
+        self._optimize_rules.setPlaceholderText(
+            "留空则使用内置默认规则。这里仅替换优化规则，不影响历史上下文结构。"
+        )
+        self._optimize_rules.setMinimumHeight(180)
+        prompt_lay.addWidget(self._optimize_rules, stretch=1)
+
+        prompt_tip = QLabel(
+            "建议仅填写“规则部分”。保存后立即生效，无需重新打包。"
+        )
+        prompt_tip.setStyleSheet("color: #6c7086; font-size: 12px;")
+        prompt_tip.setWordWrap(True)
+        prompt_lay.addWidget(prompt_tip)
+
+        tabs.addTab(tab_prompt, "提示词")
+
         # ────────── 翻译 ──────────
         tab_trans = QWidget()
         form_trans = QFormLayout(tab_trans)
@@ -302,6 +329,7 @@ class SettingsDialog(QDialog):
         self._llm_url.setText(c.get("llm.base_url", ""))
         self._llm_model.setText(c.get("llm.model", ""))
         self._llm_key.setText(c.get("llm.api_key", ""))
+        self._optimize_rules.setPlainText(c.get("optimize.rules", ""))
         self._ctx_count.setValue(c.get("history.context_count", 5))
         self._trans_lang.setCurrentText(
             c.get("translation.target_language", "English")
@@ -317,6 +345,7 @@ class SettingsDialog(QDialog):
         c.set("llm.base_url", self._llm_url.text().strip())
         c.set("llm.model", self._llm_model.text().strip())
         c.set("llm.api_key", self._llm_key.text())
+        c.set("optimize.rules", self._optimize_rules.toPlainText().strip())
         c.set("history.context_count", self._ctx_count.value())
         c.set("translation.target_language",
               self._trans_lang.currentText().strip())

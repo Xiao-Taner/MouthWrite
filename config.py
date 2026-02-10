@@ -23,6 +23,9 @@ DEFAULT_CONFIG = {
     "history": {
         "context_count": 5,
     },
+    "optimize": {
+        "rules": "",
+    },
 }
 
 

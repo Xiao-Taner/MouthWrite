@@ -30,9 +30,8 @@ from core.audio import AudioRecorder
 from core.asr_client import ASRWorker, clean_asr_output
 from core.llm_client import (
     LLMWorker,
-    OPTIMIZE_PROMPT,
-    OPTIMIZE_PROMPT_WITH_HISTORY,
     TRANSLATE_PROMPT,
+    build_optimize_prompt,
 )
 from core.history import HistoryManager
 from gui.main_window import FloatingWindow
@@ -291,15 +290,22 @@ class Controller(QObject):
         """构建优化 prompt，注入最近 N 条历史记录作为上下文。"""
         ctx_count = self._config.get("history.context_count", 5)
         recent = self._history.get_recent(ctx_count)
+        rules_override = self._config.get("optimize.rules", "")
         if recent:
             lines = []
             for r in recent:
                 lines.append(f"[{r['time']}] {r.get('optimized_text', '')}")
             history_text = "\n".join(lines)
-            return OPTIMIZE_PROMPT_WITH_HISTORY.format(
-                history=history_text, text=self._raw_asr_text,
+            return build_optimize_prompt(
+                text=self._raw_asr_text,
+                history=history_text,
+                rules_override=rules_override,
             )
-        return OPTIMIZE_PROMPT.format(text=self._raw_asr_text)
+        return build_optimize_prompt(
+            text=self._raw_asr_text,
+            history=None,
+            rules_override=rules_override,
+        )
 
     def _start_optimization(self):
         self._window.set_state(FloatingWindow.STATE_OPTIMIZING)
