@@ -7,6 +7,7 @@ from pathlib import Path
 
 DEFAULT_CONFIG = {
     "hotkey": "alt_r",
+    "hotkey_translate_modifier": "ctrl_r",
     "asr": {
         "base_url": "http://localhost:8000/v1",
         "model": "Qwen/Qwen3-ASR-1.7B",

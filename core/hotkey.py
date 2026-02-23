@@ -38,12 +38,23 @@ class HotkeyListener(QObject):
         "f12": (keyboard.Key.f12,),
     }
 
-    def __init__(self, hotkey_name: str = "alt_r", parent=None):
+    def __init__(
+        self,
+        hotkey_name: str = "alt_r",
+        translate_modifier_name: str = "ctrl_r",
+        parent=None,
+    ):
         super().__init__(parent)
         self._target_keys = self.HOTKEY_MAP.get(
             hotkey_name, (keyboard.Key.alt_r, keyboard.Key.alt_gr)
         )
+        self._translate_modifier_keys = self.HOTKEY_MAP.get(
+            translate_modifier_name, (keyboard.Key.ctrl_r,)
+        )
         self._is_pressed = False
+        self._translate_combo_active = False
+        self._translate_requested_last_session = False
+        self._pressed_keys: set = set()
         self._dismiss_mode = False
         self._listener: keyboard.Listener | None = None
 
@@ -65,11 +76,22 @@ class HotkeyListener(QObject):
             self._listener = None
 
     # ------------------------------------------------------------------
-    def update_hotkey(self, hotkey_name: str):
+    def update_hotkey(self, hotkey_name: str, translate_modifier_name: str = "ctrl_r"):
         self._target_keys = self.HOTKEY_MAP.get(
             hotkey_name, (keyboard.Key.alt_r, keyboard.Key.alt_gr)
         )
+        self._translate_modifier_keys = self.HOTKEY_MAP.get(
+            translate_modifier_name, (keyboard.Key.ctrl_r,)
+        )
         self._is_pressed = False
+        self._translate_combo_active = False
+        self._pressed_keys.clear()
+
+    def consume_translate_request(self) -> bool:
+        """读取并清空最近一次会话是否请求翻译。"""
+        value = self._translate_requested_last_session
+        self._translate_requested_last_session = False
+        return value
 
     def set_dismiss_mode(self, enabled: bool):
         """启用/禁用 dismiss 模式。启用后任意非热键按键触发 dismiss 信号。"""
@@ -77,11 +99,21 @@ class HotkeyListener(QObject):
 
     # ------------------------------------------------------------------
     def _on_press(self, key):
+        self._pressed_keys.add(key)
         # 热键优先
         if key in self._target_keys:
             if not self._is_pressed:
                 self._is_pressed = True
+                # 按下主热键瞬间就检测一次组合键状态（支持先按修饰键再按主热键）
+                self._translate_combo_active = any(
+                    k in self._pressed_keys for k in self._translate_modifier_keys
+                )
                 self.pressed.emit()
+            return
+
+        # 主热键按住期间，如果按下翻译修饰键，则本轮会话标记为“需要翻译”
+        if self._is_pressed and key in self._translate_modifier_keys:
+            self._translate_combo_active = True
             return
 
         # dismiss 模式：任意其他键 → 关闭窗口
@@ -89,6 +121,10 @@ class HotkeyListener(QObject):
             self.dismiss.emit()
 
     def _on_release(self, key):
+        if key in self._pressed_keys:
+            self._pressed_keys.remove(key)
         if key in self._target_keys and self._is_pressed:
             self._is_pressed = False
+            self._translate_requested_last_session = self._translate_combo_active
+            self._translate_combo_active = False
             self.released.emit()

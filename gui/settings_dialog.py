@@ -170,6 +170,17 @@ class SettingsDialog(QDialog):
         ])
         form_general.addRow("触发快捷键:", self._hotkey_combo)
 
+        self._translate_modifier_combo = QComboBox()
+        self._translate_modifier_combo.addItems([
+            "ctrl_r", "ctrl_l", "shift_r", "shift_l", "alt_l",
+        ])
+        form_general.addRow("翻译组合修饰键:", self._translate_modifier_combo)
+
+        combo_tip = QLabel("组合键规则：主热键 + 修饰键 = 本轮自动翻译。")
+        combo_tip.setStyleSheet("color: #6c7086; font-size: 12px;")
+        combo_tip.setWordWrap(True)
+        form_general.addRow("", combo_tip)
+
         self._startup_chk = QCheckBox("开机自启")
         form_general.addRow("启动选项:", self._startup_chk)
         tabs.addTab(tab_general, "通用")
@@ -334,6 +345,9 @@ class SettingsDialog(QDialog):
     def _load_from_config(self):
         c = self._config
         self._hotkey_combo.setCurrentText(c.get("hotkey", "alt_r"))
+        self._translate_modifier_combo.setCurrentText(
+            c.get("hotkey_translate_modifier", "ctrl_r")
+        )
         self._startup_chk.setChecked(bool(c.get("startup.enabled", False)))
         self._asr_url.setText(c.get("asr.base_url", ""))
         self._asr_model.setText(c.get("asr.model", ""))
@@ -351,6 +365,10 @@ class SettingsDialog(QDialog):
     def _on_save(self):
         c = self._config
         c.set("hotkey", self._hotkey_combo.currentText())
+        c.set(
+            "hotkey_translate_modifier",
+            self._translate_modifier_combo.currentText(),
+        )
         c.set("startup.enabled", self._startup_chk.isChecked())
         self._apply_startup_setting(self._startup_chk.isChecked())
         c.set("asr.base_url", self._asr_url.text().strip())

@@ -8,10 +8,36 @@
 生成的 .exe 位于 dist/ 目录下。
 """
 
+import os
+import glob
+import shutil
+import sounddevice as sd
+
+# 获取 sounddevice 的 PortAudio 动态库路径
+def get_portaudio_dll():
+    """获取 sounddevice 依赖的 PortAudio DLL 路径。"""
+    try:
+        # sounddevice.query_devices 会加载 PortAudio，找不到会抛异常
+        sd.query_devices()
+    except Exception:
+        pass
+    # 尝试从 site-packages 中找到
+    import site
+    for p in site.getsitepackages():
+        for pattern in ["**/portaudio*.dll", "**/_sounddevice*.pyd"]:
+            for f in glob.glob(os.path.join(p, pattern), recursive=True):
+                return os.path.dirname(f)
+    return None
+
+pa_dir = get_portaudio_dll()
+
 a = Analysis(
     ["main.py"],
     pathex=[],
-    binaries=[],
+    binaries=[
+        # sounddevice 依赖的 PortAudio DLL
+        (pa_dir, ".") if pa_dir else (".", "."),
+    ] if pa_dir else [],
     datas=[
         # 音效资源文件
         ("gui/start.mp3", "gui"),
@@ -21,9 +47,10 @@ a = Analysis(
         # pynput 平台后端（Windows）
         "pynput.keyboard._win32",
         "pynput.mouse._win32",
-        # sounddevice PortAudio 数据
+        # sounddevice 相关
         "sounddevice",
         "_sounddevice_data",
+        "numpy",
     ],
     hookspath=[],
     hooksconfig={},
